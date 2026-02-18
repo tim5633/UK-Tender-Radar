@@ -1,6 +1,6 @@
 # UK Tender Radar
 
-## Executive Summary (EN)
+## Executive Summary
 
 This project builds a practical tender radar for UK companies by extracting key audit signals from Companies House filings:
 - `company`
@@ -32,39 +32,6 @@ Current caveats:
 1. Disclosure formats differ by company and year.
 2. Scanned PDF quality can affect extraction accuracy.
 3. Some fee lines are ambiguous and require stricter business rules.
-
-## 商務摘要（中文）
-
-這個專案是用來建立 UK 公司的 audit tender radar，從 Companies House 財報中抽取：
-- `company`
-- `external_auditor`
-- `audit_fee`
-- `currency`
-- `year`
-
-商務目的：
-1. 找出 **audit fee 高** 的公司。
-2. 找出 **外部會計師任期長**、可能接近招標窗口的公司。
-3. 用分數化 shortlist 支援優先名單決策。
-
-運作方式：
-1. 從 Companies House 拉 filings。
-2. 下載 accounts PDF。
-3. 文字抽取（快速抽樣 + 掃描檔 OCR 補救）。
-4. 解析 auditor/fee/unit/currency/year。
-5. 輸出：
-   - 全量歷史資料（`history` CSV）
-   - 行動優先名單（`shortlist` CSV）
-
-價值：
-1. 把非結構化財報轉成可分析資料列。
-2. 追蹤 auditor 更換風險與招標時點。
-3. 可重複執行，能擴展到大範圍 UK 公司。
-
-目前限制：
-1. 公司與年度間揭露格式差異大。
-2. 掃描品質會影響抽取正確率。
-3. 部分 fee 定義有歧義，需再加商業規則。
 
 Single-file Python pipeline to extract:
 - `external_auditor`
@@ -177,6 +144,40 @@ You can still override with `--api-key` / `--api-key-file` if needed.
 5. Runtime metrics printed at end:
    - `runtime_seconds`
    - `runtime_minutes`.
+  
+## Test Results (`test_tender_history.csv`)
+
+| company_number | company | year | external_auditor | audit_fee | fee_unit | currency | filing_date | confidence | pdf_path |
+|---|---|---:|---|---:|---|---|---|---|---|
+| SC095000 | LLOYDS BANKING GROUP PLC | 2025 |  | 2.0 | million | GBP | 2025-04-01 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2025-04-01.pdf |
+| SC095000 | LLOYDS BANKING GROUP PLC | 2024 | Deloitte |  | million | GBP | 2024-04-15 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2024-04-15.pdf |
+| SC095000 | LLOYDS BANKING GROUP PLC | 2023 | Deloitte | 12 | million | GBP | 2023-06-02 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2023-06-02.pdf |
+| SC095000 | LLOYDS BANKING GROUP PLC | 2022 | PwC | 2021 | million | GBP | 2022-04-05 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2022-04-05.pdf |
+| SC095000 | LLOYDS BANKING GROUP PLC | 2021 | PwC |  | million | GBP | 2021-04-28 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2021-04-28.pdf |
+| 04190816 | BT GROUP PLC | 2025 | KPMG |  | million | GBP | 2025-08-08 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2025-08-08.pdf |
+| 04190816 | BT GROUP PLC | 2024 | KPMG | 2070 | million | GBP | 2024-10-04 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2024-10-04.pdf |
+| 04190816 | BT GROUP PLC | 2023 | KPMG |  | million | GBP | 2023-09-18 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2023-09-18.pdf |
+| 04190816 | BT GROUP PLC | 2022 |  |  | million | GBP | 2022-10-05 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2022-10-05.pdf |
+| 04190816 | BT GROUP PLC | 2021 | KPMG | 31 | million | GBP | 2021-08-19 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2021-08-19.pdf |
+| 02128710 | HOWDEN JOINERY GROUP PLC | 2025 | KPMG | -1.1 | million | GBP | 2025-05-19 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2025-05-19.pdf |
+| 02128710 | HOWDEN JOINERY GROUP PLC | 2024 |  | -2022 | million | GBP | 2024-05-19 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2024-05-19.pdf |
+| 02128710 | HOWDEN JOINERY GROUP PLC | 2023 | KPMG | 41 | million | GBP | 2023-05-19 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2023-05-19.pdf |
+| 02128710 | HOWDEN JOINERY GROUP PLC | 2022 | PwC | -0.5 | million | GBP | 2022-05-24 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2022-05-24.pdf |
+| 02128710 | HOWDEN JOINERY GROUP PLC | 2021 | PwC | 10 | million | GBP | 2021-06-03 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2021-06-03.pdf |
+| 01777777 | BRITISH AIRWAYS PLC | 2025 | KPMG |  | thousand | GBP | 2025-05-16 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2025-05-16.pdf |
+| 01777777 | BRITISH AIRWAYS PLC | 2024 |  |  | million | GBP | 2024-12-16 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2024-12-16.pdf |
+| 01777777 | BRITISH AIRWAYS PLC | 2024 | KPMG |  | thousand | GBP | 2024-03-28 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2024-03-28.pdf |
+| 01777777 | BRITISH AIRWAYS PLC | 2023 | KPMG |  | million | GBP | 2023-04-25 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2023-04-25.pdf |
+| 01777777 | BRITISH AIRWAYS PLC | 2022 | KPMG |  | million | GBP | 2022-05-24 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2022-05-24.pdf |
+
+## Test Results (`test_tender_shortlist.csv`)
+
+| company_number | company | current_external_auditor | continuous_tenure_years | latest_audit_fee_gbp | priority_score | tender_status |
+|---|---|---|---:|---:|---:|---|
+| 04190816 | BT GROUP PLC | KPMG | 3 | 2070000000 | 54.5 | monitor |
+| 02128710 | HOWDEN JOINERY GROUP PLC | KPMG | 1 | 41000000 | 37.18 | monitor |
+| SC095000 | LLOYDS BANKING GROUP PLC |  | 0 | 2021000000 | 35.0 | monitor |
+| 01777777 | BRITISH AIRWAYS PLC | KPMG | 1 |  | 6.5 | monitor |
 
 ### 5) Known limitations
 1. Company disclosures are heterogeneous; wording and table layouts vary significantly.
@@ -184,7 +185,41 @@ You can still override with `--api-key` / `--api-key-file` if needed.
 3. Some filings contain multiple fee lines (group/statutory/subsidiary/pension) requiring stricter business rules.
 4. Year duplication can occur when multiple filings exist in one period.
 
-## 架構與邏輯（中文）
+## 商務摘要
+
+這個專案是用來建立 UK 公司的 audit tender radar，從 Companies House 財報中抽取：
+- `company`
+- `external_auditor`
+- `audit_fee`
+- `currency`
+- `year`
+
+商務目的：
+1. 找出 **audit fee 高** 的公司。
+2. 找出 **外部會計師任期長**、可能接近招標窗口的公司。
+3. 用分數化 shortlist 支援優先名單決策。
+
+運作方式：
+1. 從 Companies House 拉 filings。
+2. 下載 accounts PDF。
+3. 文字抽取（快速抽樣 + 掃描檔 OCR 補救）。
+4. 解析 auditor/fee/unit/currency/year。
+5. 輸出：
+   - 全量歷史資料（`history` CSV）
+   - 行動優先名單（`shortlist` CSV）
+
+價值：
+1. 把非結構化財報轉成可分析資料列。
+2. 追蹤 auditor 更換風險與招標時點。
+3. 可重複執行，能擴展到大範圍 UK 公司。
+
+目前限制：
+1. 公司與年度間揭露格式差異大。
+2. 掃描品質會影響抽取正確率。
+3. 部分 fee 定義有歧義，需再加商業規則。
+
+
+## 架構與邏輯
 
 ### 1) 系統架構
 1. **資料來源層**：Companies House API（公司搜尋、filing history、文件 metadata、PDF 下載）。
@@ -247,36 +282,3 @@ You can still override with `--api-key` / `--api-key-file` if needed.
 3. 同一份財報可能有多種 fee 定義（group/statutory/subsidiary/pension），需更嚴格商業規則。
 4. 同年度多份 filing 可能造成重複或衝突，需要後續去重策略。
 
-## Test Results (`test_tender_history.csv`)
-
-| company_number | company | year | external_auditor | audit_fee | fee_unit | currency | filing_date | confidence | pdf_path |
-|---|---|---:|---|---:|---|---|---|---|---|
-| SC095000 | LLOYDS BANKING GROUP PLC | 2025 |  | 2.0 | million | GBP | 2025-04-01 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2025-04-01.pdf |
-| SC095000 | LLOYDS BANKING GROUP PLC | 2024 | Deloitte |  | million | GBP | 2024-04-15 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2024-04-15.pdf |
-| SC095000 | LLOYDS BANKING GROUP PLC | 2023 | Deloitte | 12 | million | GBP | 2023-06-02 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2023-06-02.pdf |
-| SC095000 | LLOYDS BANKING GROUP PLC | 2022 | PwC | 2021 | million | GBP | 2022-04-05 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2022-04-05.pdf |
-| SC095000 | LLOYDS BANKING GROUP PLC | 2021 | PwC |  | million | GBP | 2021-04-28 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/SC095000_2021-04-28.pdf |
-| 04190816 | BT GROUP PLC | 2025 | KPMG |  | million | GBP | 2025-08-08 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2025-08-08.pdf |
-| 04190816 | BT GROUP PLC | 2024 | KPMG | 2070 | million | GBP | 2024-10-04 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2024-10-04.pdf |
-| 04190816 | BT GROUP PLC | 2023 | KPMG |  | million | GBP | 2023-09-18 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2023-09-18.pdf |
-| 04190816 | BT GROUP PLC | 2022 |  |  | million | GBP | 2022-10-05 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2022-10-05.pdf |
-| 04190816 | BT GROUP PLC | 2021 | KPMG | 31 | million | GBP | 2021-08-19 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/04190816_2021-08-19.pdf |
-| 02128710 | HOWDEN JOINERY GROUP PLC | 2025 | KPMG | -1.1 | million | GBP | 2025-05-19 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2025-05-19.pdf |
-| 02128710 | HOWDEN JOINERY GROUP PLC | 2024 |  | -2022 | million | GBP | 2024-05-19 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2024-05-19.pdf |
-| 02128710 | HOWDEN JOINERY GROUP PLC | 2023 | KPMG | 41 | million | GBP | 2023-05-19 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2023-05-19.pdf |
-| 02128710 | HOWDEN JOINERY GROUP PLC | 2022 | PwC | -0.5 | million | GBP | 2022-05-24 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2022-05-24.pdf |
-| 02128710 | HOWDEN JOINERY GROUP PLC | 2021 | PwC | 10 | million | GBP | 2021-06-03 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/02128710_2021-06-03.pdf |
-| 01777777 | BRITISH AIRWAYS PLC | 2025 | KPMG |  | thousand | GBP | 2025-05-16 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2025-05-16.pdf |
-| 01777777 | BRITISH AIRWAYS PLC | 2024 |  |  | million | GBP | 2024-12-16 | low | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2024-12-16.pdf |
-| 01777777 | BRITISH AIRWAYS PLC | 2024 | KPMG |  | thousand | GBP | 2024-03-28 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2024-03-28.pdf |
-| 01777777 | BRITISH AIRWAYS PLC | 2023 | KPMG |  | million | GBP | 2023-04-25 | high | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2023-04-25.pdf |
-| 01777777 | BRITISH AIRWAYS PLC | 2022 | KPMG |  | million | GBP | 2022-05-24 | medium | /Users/timliu/Documents/GitHub/UK-Tender-Radar/uk_accounts_pdfs/01777777_2022-05-24.pdf |
-
-## Test Results (`test_tender_shortlist.csv`)
-
-| company_number | company | current_external_auditor | continuous_tenure_years | latest_audit_fee_gbp | priority_score | tender_status |
-|---|---|---|---:|---:|---:|---|
-| 04190816 | BT GROUP PLC | KPMG | 3 | 2070000000 | 54.5 | monitor |
-| 02128710 | HOWDEN JOINERY GROUP PLC | KPMG | 1 | 41000000 | 37.18 | monitor |
-| SC095000 | LLOYDS BANKING GROUP PLC |  | 0 | 2021000000 | 35.0 | monitor |
-| 01777777 | BRITISH AIRWAYS PLC | KPMG | 1 |  | 6.5 | monitor |
