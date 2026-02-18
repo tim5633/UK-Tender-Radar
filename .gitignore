@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+
+# Local secrets / machine-specific config
+.env
+ch_api_key.txt
+
+# Generated outputs
+tender_history.csv
+tender_shortlist.csv
+test_tender_history.csv
+test_tender_shortlist.csv
+uk_accounts_pdfs/
