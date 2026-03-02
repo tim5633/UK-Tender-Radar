@@ -7,10 +7,8 @@ import csv
 import math
 import os
 import re
-import sys
 import time
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -34,148 +32,188 @@ AUDITOR_NORMALIZATION = {
 }
 
 
-@dataclass
-class ExtractedRow:
-    company_number: str
-    company: str
-    year: str
-    external_auditor: str
-    audit_fee: str
-    fee_unit: str
-    currency: str
-    filing_date: str
-    confidence: str
-    pdf_path: str
+def make_row(
+    company_number: str,
+    company: str,
+    year: str,
+    external_auditor: str,
+    audit_fee: str,
+    fee_unit: str,
+    currency: str,
+    filing_date: str,
+    confidence: str,
+    pdf_path: str,
+) -> Dict[str, str]:
+    """Create one normalized output row."""
+    return {
+        "company_number": company_number,
+        "company": company,
+        "year": year,
+        "external_auditor": external_auditor,
+        "audit_fee": audit_fee,
+        "fee_unit": fee_unit,
+        "currency": currency,
+        "filing_date": filing_date,
+        "confidence": confidence,
+        "pdf_path": pdf_path,
+    }
 
-    def as_dict(self) -> Dict[str, str]:
-        return {
-            "company_number": self.company_number,
-            "company": self.company,
-            "year": self.year,
-            "external_auditor": self.external_auditor,
-            "audit_fee": self.audit_fee,
-            "fee_unit": self.fee_unit,
-            "currency": self.currency,
-            "filing_date": self.filing_date,
-            "confidence": self.confidence,
-            "pdf_path": self.pdf_path,
-        }
+
+def create_ch_session(api_key: str) -> Tuple[requests.Session, Dict[str, str]]:
+    """Create authenticated Companies House session + default headers."""
+    session = requests.Session()
+    auth = base64.b64encode(f"{api_key}:".encode("utf-8")).decode("utf-8")
+    return session, {"Authorization": f"Basic {auth}"}
 
 
-class CHClient:
-    def __init__(self, api_key: str, sleep_seconds: float = 0.25) -> None:
-        self.sleep_seconds = sleep_seconds
-        self.session = requests.Session()
-        auth = base64.b64encode(f"{api_key}:".encode("utf-8")).decode("utf-8")
-        self.base_headers = {"Authorization": f"Basic {auth}"}
-
-    def _json(self, url: str, params: Optional[dict] = None, retries: int = 3) -> Optional[dict]:
-        for attempt in range(1, retries + 1):
-            try:
-                r = self.session.get(url, headers=self.base_headers, params=params, timeout=60)
-                if r.status_code == 200:
-                    return r.json()
-                if r.status_code in (429, 500, 502, 503, 504):
-                    time.sleep(1.2 * attempt)
-                    continue
+def request_json(
+    session: requests.Session,
+    headers: Dict[str, str],
+    url: str,
+    params: Optional[dict] = None,
+    retries: int = 3,
+) -> Optional[dict]:
+    """GET json endpoint with retry on transient failures."""
+    for attempt in range(1, retries + 1):
+        try:
+            r = session.get(url, headers=headers, params=params, timeout=60)
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code in (429, 500, 502, 503, 504):
+                time.sleep(1.2 * attempt)
+                continue
+            return None
+        except requests.RequestException:
+            if attempt == retries:
                 return None
-            except requests.RequestException:
-                if attempt == retries:
-                    return None
-                time.sleep(1.2 * attempt)
-        return None
+            time.sleep(1.2 * attempt)
+    return None
 
-    def search_companies(self, query: str, limit: int) -> List[dict]:
-        items: List[dict] = []
-        start_index = 0
-        page_size = 100
-        while len(items) < limit:
-            data = self._json(
-                f"{COMPANIES_HOUSE_API}/search/companies",
-                params={"q": query, "start_index": start_index, "items_per_page": page_size},
-            )
-            if not data:
-                break
-            page_items = data.get("items", [])
-            if not page_items:
-                break
-            for item in page_items:
-                if item.get("company_status") == "active":
-                    items.append(item)
-                    if len(items) >= limit:
-                        break
-            start_index += page_size
-            if start_index >= int(data.get("total_results", 0)):
-                break
-            time.sleep(self.sleep_seconds)
-        return items[:limit]
 
-    def account_filings(self, company_number: str, limit: int, include_all_accounts: bool) -> List[dict]:
-        start_index = 0
-        page_size = 100
-        out: List[dict] = []
-        seen_keys = set()
-        while len(out) < limit:
-            data = self._json(
-                f"{COMPANIES_HOUSE_API}/company/{company_number}/filing-history",
-                params={"start_index": start_index, "items_per_page": page_size},
-            )
-            if not data:
-                break
-            items = data.get("items", [])
-            if not items:
-                break
-
-            for filing in items:
-                if filing.get("category") != "accounts":
-                    continue
-                if not include_all_accounts and not is_probably_full_audited_accounts(filing):
-                    continue
-                key = (
-                    str(filing.get("date", "")),
-                    str(filing.get("type", "")),
-                    str(filing.get("links", {}).get("document_metadata", "")),
-                )
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
-                out.append(filing)
-                if len(out) >= limit:
+def search_companies(
+    session: requests.Session,
+    headers: Dict[str, str],
+    sleep_seconds: float,
+    query: str,
+    limit: int,
+) -> List[dict]:
+    """Search active companies from Companies House."""
+    items: List[dict] = []
+    start_index = 0
+    page_size = 100
+    while len(items) < limit:
+        data = request_json(
+            session,
+            headers,
+            f"{COMPANIES_HOUSE_API}/search/companies",
+            params={"q": query, "start_index": start_index, "items_per_page": page_size},
+        )
+        if not data:
+            break
+        page_items = data.get("items", [])
+        if not page_items:
+            break
+        for item in page_items:
+            if item.get("company_status") == "active":
+                items.append(item)
+                if len(items) >= limit:
                     break
-            start_index += page_size
-            if start_index >= int(data.get("total_count", 0)):
+        start_index += page_size
+        if start_index >= int(data.get("total_results", 0)):
+            break
+        time.sleep(sleep_seconds)
+    return items[:limit]
+
+
+def account_filings(
+    session: requests.Session,
+    headers: Dict[str, str],
+    sleep_seconds: float,
+    company_number: str,
+    limit: int,
+    include_all_accounts: bool,
+) -> List[dict]:
+    """Fetch unique recent account filings for one company."""
+    start_index = 0
+    page_size = 100
+    out: List[dict] = []
+    seen_keys = set()
+    while len(out) < limit:
+        data = request_json(
+            session,
+            headers,
+            f"{COMPANIES_HOUSE_API}/company/{company_number}/filing-history",
+            params={"start_index": start_index, "items_per_page": page_size},
+        )
+        if not data:
+            break
+        items = data.get("items", [])
+        if not items:
+            break
+
+        for filing in items:
+            if filing.get("category") != "accounts":
+                continue
+            if not include_all_accounts and not is_probably_full_audited_accounts(filing):
+                continue
+            key = (
+                str(filing.get("date", "")),
+                str(filing.get("type", "")),
+                str(filing.get("links", {}).get("document_metadata", "")),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            out.append(filing)
+            if len(out) >= limit:
                 break
-            time.sleep(self.sleep_seconds)
-        return out
+        start_index += page_size
+        if start_index >= int(data.get("total_count", 0)):
+            break
+        time.sleep(sleep_seconds)
+    return out
 
-    def document_pdf_url(self, document_metadata_url: str) -> Optional[str]:
-        meta = self._json(document_metadata_url)
-        if not meta:
-            return None
-        link = meta.get("links", {}).get("document")
-        if not link:
-            return None
-        return link if str(link).startswith("http") else f"{DOCUMENT_API_HOST}{link}"
 
-    def download_pdf(self, pdf_url: str, output_path: Path) -> bool:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        headers = dict(self.base_headers)
-        headers["Accept"] = "application/pdf"
-        for attempt in range(1, 4):
-            try:
-                r = self.session.get(pdf_url, headers=headers, timeout=120)
-                if r.status_code == 200 and r.content:
-                    output_path.write_bytes(r.content)
-                    return True
-                if r.status_code in (429, 500, 502, 503, 504):
-                    time.sleep(1.2 * attempt)
-                    continue
-                return False
-            except requests.RequestException:
-                if attempt == 3:
-                    return False
+def document_pdf_url(
+    session: requests.Session,
+    headers: Dict[str, str],
+    document_metadata_url: str,
+) -> Optional[str]:
+    """Resolve filing metadata endpoint into downloadable PDF URL."""
+    meta = request_json(session, headers, document_metadata_url)
+    if not meta:
+        return None
+    link = meta.get("links", {}).get("document")
+    if not link:
+        return None
+    return link if str(link).startswith("http") else f"{DOCUMENT_API_HOST}{link}"
+
+
+def download_pdf(
+    session: requests.Session,
+    headers: Dict[str, str],
+    pdf_url: str,
+    output_path: Path,
+) -> bool:
+    """Download one PDF with retries."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    req_headers = dict(headers)
+    req_headers["Accept"] = "application/pdf"
+    for attempt in range(1, 4):
+        try:
+            r = session.get(pdf_url, headers=req_headers, timeout=120)
+            if r.status_code == 200 and r.content:
+                output_path.write_bytes(r.content)
+                return True
+            if r.status_code in (429, 500, 502, 503, 504):
                 time.sleep(1.2 * attempt)
-        return False
+                continue
+            return False
+        except requests.RequestException:
+            if attempt == 3:
+                return False
+            time.sleep(1.2 * attempt)
+    return False
 
 
 def load_dotenv_file(path: Path) -> None:
@@ -626,25 +664,34 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def main() -> int:
-    start_ts = time.time()
-    args = parse_args()
-    api_key = args.api_key or load_api_key_from_file(Path(args.api_key_file))
-    if not api_key:
-        print(
-            "Missing API key. Provide --api-key, set CH_API_KEY, "
-            "or create ch_api_key.txt in project root."
-        )
-        return 1
-
-    client = CHClient(api_key=api_key, sleep_seconds=args.sleep_seconds)
-    companies = client.search_companies(query=args.company_query, limit=args.max_companies)
+def run_pipeline(
+    api_key: str,
+    company_query: str,
+    max_companies: int,
+    max_filings_per_company: int,
+    sleep_seconds: float,
+    include_all_accounts: bool,
+    download_dir: Path,
+    enable_ocr_fallback: bool,
+    ocr_max_pages: int,
+    history_csv: Path,
+    shortlist_csv: Path,
+) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+    """Run the end-to-end extraction pipeline and write CSV outputs."""
+    session, headers = create_ch_session(api_key)
+    companies = search_companies(
+        session=session,
+        headers=headers,
+        sleep_seconds=sleep_seconds,
+        query=company_query,
+        limit=max_companies,
+    )
     if not companies:
-        print("No active companies found.")
-        return 0
+        write_csv(history_csv, [], ["company_number", "company", "year", "external_auditor", "audit_fee", "fee_unit", "currency", "filing_date", "confidence", "pdf_path"])
+        write_csv(shortlist_csv, [], ["company_number", "company", "current_external_auditor", "continuous_tenure_years", "latest_audit_fee_gbp", "priority_score", "tender_status"])
+        return ([], [])
 
     history_rows: List[Dict[str, str]] = []
-    download_dir = Path(args.download_dir)
 
     for c in companies:
         company_number = str(c.get("company_number") or "")
@@ -652,10 +699,13 @@ def main() -> int:
             continue
         company_name = str(c.get("title") or company_number)
 
-        filings = client.account_filings(
+        filings = account_filings(
+            session=session,
+            headers=headers,
+            sleep_seconds=sleep_seconds,
             company_number=company_number,
-            limit=args.max_filings_per_company,
-            include_all_accounts=args.include_all_accounts,
+            limit=max_filings_per_company,
+            include_all_accounts=include_all_accounts,
         )
         for filing in filings:
             filing_date = str(filing.get("date") or "")
@@ -663,12 +713,12 @@ def main() -> int:
             if not meta_url:
                 continue
 
-            pdf_url = client.document_pdf_url(str(meta_url))
+            pdf_url = document_pdf_url(session=session, headers=headers, document_metadata_url=str(meta_url))
             if not pdf_url:
                 continue
 
             pdf_path = download_dir / f"{company_number}_{filing_date}.pdf"
-            if not pdf_path.exists() and not client.download_pdf(pdf_url=pdf_url, output_path=pdf_path):
+            if not pdf_path.exists() and not download_pdf(session=session, headers=headers, pdf_url=pdf_url, output_path=pdf_path):
                 continue
 
             text = extract_pdf_text_sampled(pdf_path)
@@ -677,12 +727,11 @@ def main() -> int:
             currency, fee_unit = detect_currency_and_unit(text)
             year = parse_year(filing_date, text)
 
-            # Accuracy fallback for scanned / low-text PDFs.
-            need_ocr = args.enable_ocr_fallback and (
+            need_ocr = enable_ocr_fallback and (
                 not auditor or not audit_fee or not currency or not fee_unit
             )
             if need_ocr:
-                ocr_text = ocr_targeted_text(pdf_path, max_pages=args.ocr_max_pages)
+                ocr_text = ocr_targeted_text(pdf_path, max_pages=ocr_max_pages)
                 if ocr_text:
                     ocr_auditor, ocr_conf = extract_external_auditor(ocr_text)
                     ocr_fee, _ = extract_audit_fee(ocr_text)
@@ -701,25 +750,26 @@ def main() -> int:
                     if ocr_year and not year:
                         year = ocr_year
 
-            row = ExtractedRow(
-                company_number=company_number,
-                company=company_name,
-                year=year,
-                external_auditor=auditor,
-                audit_fee=audit_fee,
-                fee_unit=fee_unit,
-                currency=currency,
-                filing_date=filing_date,
-                confidence=confidence,
-                pdf_path=str(pdf_path),
+            history_rows.append(
+                make_row(
+                    company_number=company_number,
+                    company=company_name,
+                    year=year,
+                    external_auditor=auditor,
+                    audit_fee=audit_fee,
+                    fee_unit=fee_unit,
+                    currency=currency,
+                    filing_date=filing_date,
+                    confidence=confidence,
+                    pdf_path=str(pdf_path),
+                )
             )
-            history_rows.append(row.as_dict())
 
     history_rows.sort(key=lambda r: (r.get("company_number", ""), r.get("year", "")), reverse=True)
     shortlist_rows = build_shortlist(history_rows)
 
     write_csv(
-        Path(args.history_csv),
+        history_csv,
         history_rows,
         [
             "company_number",
@@ -735,7 +785,7 @@ def main() -> int:
         ],
     )
     write_csv(
-        Path(args.shortlist_csv),
+        shortlist_csv,
         shortlist_rows,
         [
             "company_number",
@@ -747,6 +797,34 @@ def main() -> int:
             "tender_status",
         ],
     )
+    return history_rows, shortlist_rows
+
+
+def run_cli() -> int:
+    """CLI entrypoint for command-line execution."""
+    start_ts = time.time()
+    args = parse_args()
+    api_key = args.api_key or load_api_key_from_file(Path(args.api_key_file))
+    if not api_key:
+        print(
+            "Missing API key. Provide --api-key, set CH_API_KEY, "
+            "or create ch_api_key.txt in project root."
+        )
+        return 1
+
+    history_rows, shortlist_rows = run_pipeline(
+        api_key=api_key,
+        company_query=args.company_query,
+        max_companies=args.max_companies,
+        max_filings_per_company=args.max_filings_per_company,
+        sleep_seconds=args.sleep_seconds,
+        include_all_accounts=args.include_all_accounts,
+        download_dir=Path(args.download_dir),
+        enable_ocr_fallback=args.enable_ocr_fallback,
+        ocr_max_pages=args.ocr_max_pages,
+        history_csv=Path(args.history_csv),
+        shortlist_csv=Path(args.shortlist_csv),
+    )
 
     print(f"[DONE] history CSV: {args.history_csv}")
     print(f"[DONE] shortlist CSV: {args.shortlist_csv}")
@@ -755,9 +833,3 @@ def main() -> int:
     print(f"[DONE] runtime_seconds: {elapsed:.2f}")
     print(f"[DONE] runtime_minutes: {elapsed / 60:.2f}")
     return 0
-
-
-if __name__ == "__main__":
-    exit_code = main()
-    if "ipykernel" not in sys.modules:
-        raise SystemExit(exit_code)

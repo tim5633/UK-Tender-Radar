@@ -42,7 +42,8 @@ Single-file Python pipeline to extract:
 From UK Companies House accounts filings, then rank companies by tender priority.
 
 ## Files
-- `tender_radar.py`: main script
+- `tender_radar.py`: all core functions (no class)
+- `run_tender_radar.py`: execution entrypoint
 - `requirements.txt`: dependencies
 - `.gitignore`: repo hygiene
 
@@ -66,7 +67,7 @@ CH_API_KEY=YOUR_COMPANIES_HOUSE_API_KEY
 
 Then run:
 ```bash
-python tender_radar.py \
+python run_tender_radar.py \
   --company-query "plc" \
   --max-companies 200 \
   --max-filings-per-company 5 \
@@ -184,4 +185,3 @@ You can still override with `--api-key` / `--api-key-file` if needed.
 2. Scanned PDFs can still degrade extraction quality.
 3. Some filings contain multiple fee lines (group/statutory/subsidiary/pension) requiring stricter business rules.
 4. Year duplication can occur when multiple filings exist in one period.
-

@@ -6,20 +6,24 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from tender_radar import (
-    CHClient,
-    ExtractedRow,
+    account_filings,
     build_shortlist,
+    create_ch_session,
     detect_currency_and_unit,
+    document_pdf_url,
+    download_pdf,
     extract_audit_fee,
     extract_external_auditor,
     extract_pdf_text_sampled,
     load_dotenv_file,
     load_api_key_from_file,
+    make_row,
     ocr_targeted_text,
     parse_year,
+    search_companies,
     write_csv,
 )
 
@@ -31,7 +35,7 @@ TARGET_COMPANIES = [
 ]
 
 
-def pick_target_companies(client: CHClient) -> List[Dict[str, str]]:
+def pick_target_companies(session, headers, sleep_seconds: float) -> List[Dict[str, str]]:
     """
     Pull only the target companies and keep one best active match per target query.
     """
@@ -39,7 +43,13 @@ def pick_target_companies(client: CHClient) -> List[Dict[str, str]]:
     seen_numbers = set()
 
     for query in TARGET_COMPANIES:
-        candidates = client.search_companies(query=query, limit=20)
+        candidates = search_companies(
+            session=session,
+            headers=headers,
+            sleep_seconds=sleep_seconds,
+            query=query,
+            limit=20,
+        )
         if not candidates:
             continue
 
@@ -118,8 +128,8 @@ def main() -> int:
         )
         return 1
 
-    client = CHClient(api_key=api_key, sleep_seconds=args.sleep_seconds)
-    companies = pick_target_companies(client)
+    session, headers = create_ch_session(api_key)
+    companies = pick_target_companies(session=session, headers=headers, sleep_seconds=args.sleep_seconds)
     if not companies:
         print("No target companies found.")
         return 0
@@ -133,7 +143,10 @@ def main() -> int:
             continue
         company_name = str(c.get("title") or company_number)
 
-        filings = client.account_filings(
+        filings = account_filings(
+            session=session,
+            headers=headers,
+            sleep_seconds=args.sleep_seconds,
             company_number=company_number,
             limit=args.max_filings_per_company,
             include_all_accounts=args.include_all_accounts,
@@ -144,12 +157,17 @@ def main() -> int:
             if not meta_url:
                 continue
 
-            pdf_url = client.document_pdf_url(str(meta_url))
+            pdf_url = document_pdf_url(session=session, headers=headers, document_metadata_url=str(meta_url))
             if not pdf_url:
                 continue
 
             pdf_path = download_dir / f"{company_number}_{filing_date}.pdf"
-            if not pdf_path.exists() and not client.download_pdf(pdf_url=pdf_url, output_path=pdf_path):
+            if not pdf_path.exists() and not download_pdf(
+                session=session,
+                headers=headers,
+                pdf_url=pdf_url,
+                output_path=pdf_path,
+            ):
                 continue
 
             text = extract_pdf_text_sampled(pdf_path)
@@ -180,7 +198,7 @@ def main() -> int:
                     if ocr_year and not year:
                         year = ocr_year
 
-            row = ExtractedRow(
+            row = make_row(
                 company_number=company_number,
                 company=company_name,
                 year=year,
@@ -192,7 +210,7 @@ def main() -> int:
                 confidence=confidence,
                 pdf_path=str(pdf_path),
             )
-            history_rows.append(row.as_dict())
+            history_rows.append(row)
 
     history_rows.sort(key=lambda r: (r.get("company_number", ""), r.get("year", "")), reverse=True)
     shortlist_rows = build_shortlist(history_rows)
