@@ -12,3 +12,5 @@ tender_shortlist.csv
 test_tender_history.csv
 test_tender_shortlist.csv
 uk_accounts_pdfs/
+mineru_outputs/
+companies_house_cache/

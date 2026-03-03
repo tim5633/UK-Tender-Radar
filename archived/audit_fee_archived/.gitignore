@@ -1,0 +1,10 @@
+__pycache__/
+.DS_Store
+*.pyc
+
+# Local outputs
+uk_accounts_pdfs/
+tender_history*.csv
+tender_shortlist*.csv
+plc_random_sample*.csv
+ch_api_key.txt

@@ -42,10 +42,12 @@ Single-file Python pipeline to extract:
 From UK Companies House accounts filings, then rank companies by tender priority.
 
 ## Files
-- `tender_radar.py`: all core functions (no class)
-- `run_tender_radar.py`: execution entrypoint
+- `tender_radar.py`: core extraction/scoring helper functions (function-only, no class)
+- `run_tender_radar_mineru.py`: CLI pipeline using MinerU
+- `run_tender_radar_mineru_vscode.py`: step-by-step `#%%` workflow for VS Code/Jupyter
+- `run_tender_radar_mineru_notebook.ipynb`: notebook version of the same `#%%` logic
 - `requirements.txt`: dependencies
-- `.gitignore`: repo hygiene
+- `.env.example`: environment/config template
 
 ## Setup
 ```bash
@@ -65,18 +67,152 @@ CH_API_KEY=YOUR_COMPANIES_HOUSE_API_KEY
 - Keep secrets in `.env` (do not commit API keys to GitHub).
 - Downloaded PDFs are stored in `uk_accounts_pdfs/` and are ignored by git by default.
 
-Then run:
+Then run MinerU CLI:
 ```bash
-python run_tender_radar.py \
-  --company-query "plc" \
-  --max-companies 200 \
-  --max-filings-per-company 5 \
-  --enable-ocr-fallback \
-  --history-csv ./tender_history.csv \
-  --shortlist-csv ./tender_shortlist.csv
+python run_tender_radar_mineru.py \
+  --company-source auto-all \
+  --max-companies 0 \
+  --max-filings-per-company 20
 ```
 
+Run with full company CSV (active companies, bypass search query):
+```bash
+python run_tender_radar_mineru.py \
+  --company-source csv \
+  --companies-csv /path/to/BasicCompanyData-part1.csv \
+  --max-companies 5000 \
+  --max-filings-per-company 5
+```
+This mode keeps `company_status=active` and processes accounts filings that look like annual report/accounts/statutory audit filings.
+
+Run with automatic full Companies House download (no local CSV needed):
+```bash
+python run_tender_radar_mineru.py \
+  --company-source auto-all \
+  --max-companies 0 \
+  --max-filings-per-company 20
+```
+
+Run step-by-step in VS Code/Jupyter:
+1. Open `/Users/timliu/Documents/GitHub/UK-Tender-Radar/run_tender_radar_mineru_notebook.ipynb`.
+2. Cell 1: set config values, especially:
+   - `COMPANY_SOURCE = "auto-all"`
+   - `TARGET_COMPANY_KEYWORDS = ["howden joinery group plc"]`
+   - `SAMPLE_ONLY_COMPANY_NUMBER = "02128710"`
+3. Cell 2: pre-flight checks (MinerU CLI + runtime dependencies + API key).
+4. Cell 3: load companies from selected source.
+5. Cell 4: keyword filter.
+6. Cell 6: fetch filings for filtered companies and build inspection DataFrames.
+7. Cell 7: download filings PDFs for all filtered companies.
+8. Cell 8: run one sample extraction (currently set to one target company), with runtime metrics.
+9. Cell 10: full run on filtered companies; write CSV and show final DataFrames.
+
 You can still override with `--api-key` / `--api-key-file` if needed.
+
+## Cell-by-Cell Logic And Def Map
+
+### Cell 1: Config
+Purpose:
+1. Set source mode (`search` / `csv` / `auto-all`).
+2. Set target filters and run limits.
+3. Set MinerU behavior (`method`, `device`, `formula`, `table`).
+
+Defs used:
+1. `load_dotenv_file` (`tender_radar.py`)
+2. `load_api_key_from_file` (`tender_radar.py`)
+
+### Cell 2: Pre-flight
+Purpose:
+1. Fail early if MinerU CLI is missing.
+2. Fail early if runtime deps (e.g. `ftfy`) are missing.
+3. Fail early if API key is missing.
+
+Defs used:
+1. `ensure_mineru_cli` (`run_tender_radar_mineru.py`)
+2. `check_mineru_runtime_deps` (`run_tender_radar_mineru.py`)
+
+### Cell 3: Company universe
+Purpose:
+1. Build authenticated Companies House session.
+2. Load companies from selected source.
+
+Defs used:
+1. `create_ch_session` (`tender_radar.py`)
+2. `ensure_companies_csv_from_companies_house` (`run_tender_radar_mineru.py`)
+3. `load_active_companies_from_csv` (`run_tender_radar_mineru.py`)
+4. `search_companies` (`tender_radar.py`)
+
+### Cell 4: Target filter
+Purpose:
+1. Reduce company universe to user-targeted names (keyword contains).
+2. Keep the run small and explainable before full run.
+
+Defs used:
+1. In-cell filtering logic (no external def).
+
+### Cell 6: Filing discovery + visibility
+Purpose:
+1. Pull filings for each filtered company.
+2. Keep only target account filings.
+3. Generate two inspection DataFrames:
+   - `company_filing_summary_df`
+   - `company_filing_details_df`
+
+Defs used:
+1. `account_filings` (`tender_radar.py`)
+2. `is_target_accounts_filing` (`run_tender_radar_mineru.py`)
+
+### Cell 7: PDF download
+Purpose:
+1. Download filing PDFs for all filtered companies.
+2. Show downloaded file list as DataFrame.
+
+Defs used:
+1. `document_pdf_url` (`tender_radar.py`)
+2. `download_pdf` (`tender_radar.py`)
+
+### Cell 8: Sample extraction (fast validation)
+Purpose:
+1. Select only `SAMPLE_ONLY_COMPANY_NUMBER`.
+2. For that company, pick smallest-page filing as sample.
+3. Run MinerU + extraction and show runtime.
+
+Defs used:
+1. `get_pdf_page_count` (`run_tender_radar_mineru_vscode.py`)
+2. `document_pdf_url` (`tender_radar.py`)
+3. `download_pdf` (`tender_radar.py`)
+4. `run_mineru_extract` (`run_tender_radar_mineru.py`)
+5. `extract_external_auditor` (`tender_radar.py`)
+6. `extract_audit_fee` (`tender_radar.py`)
+7. `detect_currency_and_unit` (`tender_radar.py`)
+8. `parse_year` (`tender_radar.py`)
+
+### Cell 9: Failure diagnostics
+Purpose:
+1. For failed sample rows, print MinerU stderr tail for root-cause debugging.
+
+Defs used:
+1. In-cell log parsing logic (no external def).
+
+### Cell 10: Full extraction + outputs
+Purpose:
+1. Run full extraction on filtered companies.
+2. Produce history rows + shortlist.
+3. Save CSV and display final DataFrames.
+
+Defs used:
+1. `account_filings` (`tender_radar.py`)
+2. `is_target_accounts_filing` (`run_tender_radar_mineru.py`)
+3. `document_pdf_url` (`tender_radar.py`)
+4. `download_pdf` (`tender_radar.py`)
+5. `run_mineru_extract` (`run_tender_radar_mineru.py`)
+6. `extract_external_auditor` (`tender_radar.py`)
+7. `extract_audit_fee` (`tender_radar.py`)
+8. `detect_currency_and_unit` (`tender_radar.py`)
+9. `parse_year` (`tender_radar.py`)
+10. `make_row` (`tender_radar.py`)
+11. `build_shortlist` (`tender_radar.py`)
+12. `write_csv` (`tender_radar.py`)
 
 ## Outputs
 - `tender_history.csv`:
